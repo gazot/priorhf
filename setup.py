@@ -14,6 +14,7 @@ setup(
     install_requires=[
         "numpy",
         "pyhf",
-        "jax",
+        "scipy",
+        "juliacall>=0.9.6",
     ],
 )

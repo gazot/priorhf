@@ -3,50 +3,16 @@ import json
 import pyhf 
 import numpy as np
 # scipy distributions
-# from scipy.stats import gamma, norm, uniform 
+from scipy.stats import gamma, norm, uniform 
 
 
 def pyhf_model(ws: str) -> pyhf.Model:
     """Wrapper to acces the pyhf_model from 'ws' path"""
-    assert os.path.exists(ws) 
+    assert os.path.exists(ws), "No workspace '{}'".format(ws)
 
     with open(ws) as serialized:
         spec = json.load(serialized)
     return pyhf.Workspace(spec).model()
-
-
-def make_prior_txt(ws: str):
-    """
-    Create priors from a pyhf workspace 'ws' as dict {'name' : density}
-    """
-    
-    model = pyhf_model(ws)
-
-    # parameter map and modifiers
-    par_map = model.config.par_map.values()
-    modifier_dict = dict(model.config.modifiers)
-
-    # initialize param vector 
-    param_len = len(model.config.suggested_init())
-    param = [None] * param_len 
-
-    # create prior distributions for all parameters 
-    for par in par_map:
-        # paramset holds all parameter properties
-        pset = par['paramset']
-        pslice = par['slice']
-        
-        mod = modifier_dict[pset.name]
-        param[pslice] = create_pdf_txt(mod, pset) 
-
-    # construct names (replace ' ' with '_')
-    names = list()
-    for par in par_map:
-        nparam = par['paramset'].n_parameters
-        name = par['paramset'].name
-        names += [name] if nparam == 1 else [name + str(i) for i in range(nparam)]
-
-    return dict(zip(names, param)) 
 
 
 def create_pdf_txt(modifier: str, pset):
@@ -100,6 +66,57 @@ def create_pdf_txt(modifier: str, pset):
             raise TypeError("Unexpected modifier '{}'".format(modifier))
 
 
+def create_pdf_scipy(modifier: str, pset):
+    """
+    Create conjuagate prior distributions from auxdata.
+
+    Note: 'shapefactor' modifiers are not implemented yet.
+    """
+    
+    # constrained parameter (shapesys, histosys, normsys, staterror, lumi)
+    if pset.constrained: 
+        
+        # constrained params have auxdata
+        auxdata = pset.auxdata
+        
+        if modifier == 'shapesys':      # n parameter
+            # Gamma(a, scale) for all bins as iterator
+            gamma_pdf_iter = iter(zip(*gamma_param(auxdata)))
+            return [gamma(a, scale=theta) for(a, theta) in gamma_pdf_iter]
+
+        elif modifier == 'histosys':    # 1 parameter
+            # Standard Normal distribution centered at 0
+            mu, sig = gauss_param(auxdata, 1)
+            return [norm(mu, sig)]
+        
+        elif modifier == 'normsys':     # 1 parameter
+            # Normal distribution centered at 0
+            mu, sig = gauss_param(auxdata, 1)
+            return [norm(mu, sig)]
+    
+        elif modifier == 'staterror':   # n parameter
+            sigmas = pset.sigmas
+            # Normal distribution centered at 1
+            gauss_pdf_iter = iter(zip(*gauss_param(auxdata, sigmas)))
+            return [norm(mu, sig) for (mu, sig) in gauss_pdf_iter]
+
+        elif modifier == 'lumi':        # 1 parameter
+            # Normal distribution centered at 1
+            mu, sig = gauss_param(auxdata, pset.sigmas)
+            return [norm(mu, sig)]
+        else: 
+            raise TypeError("Unexpected modifier '{}'".format(modifier))
+
+    # unconstrained parameter (normfactor, shapefactor)
+    else:
+        if modifier == 'normfactor':
+            return [uniform(0,5)]
+        elif modifier == 'shapefactor':
+            raise NotImplementedError
+        else: 
+            raise TypeError("Unexpected modifier '{}'".format(modifier))
+
+
 def list_params(ws: str):
     """List parameter (name, modifier) for Debugging."""
     model = pyhf_model(ws) 
@@ -119,7 +136,8 @@ def list_params(ws: str):
 # ---------------- conjugate prior update ---------------------------
 
 
-# Initial priors parameters
+# Initial prior parameters
+
 GAMMA_PRIOR_ALPHA = 1
 GAUSS_PRIOR_VAR = 100
 

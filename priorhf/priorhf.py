@@ -2,9 +2,9 @@ import numpy as np
 import pyhf 
 
 from collections import namedtuple
-from .utils import gauss_param, gamma_param, pyhf_model
+from .utils import *
 
-# jl packages
+# Julia packages
 from juliacall import Main as jl
 jl.seval("using Distributions")
 jl.seval('using ValueShapes')
@@ -14,9 +14,14 @@ jl.seval('using ValueShapes')
 key_str = lambda d: ' '.join(list(d.keys()))
 
 
-def make_prior(ws: str):
+def make_prior(ws: str, typ='jl'):
     """
     Create priors from a pyhf workspace 'ws' as dict {'name' : density}
+    @param  ws  'path/to/HF/workspace.json'
+    @param  typ ['jl', 'scipy', 'txt'] 
+                jl:     returns a Tuple (jl.NamedTupleDist, prior_specs)
+                scipy:  dict {param_name: scipy.stats density}
+                txt:    dict {param_name: txt }
     """
     
     model = pyhf_model(ws)
@@ -36,7 +41,14 @@ def make_prior(ws: str):
         pslice = par['slice']
         
         mod = modifier_dict[pset.name]
-        param[pslice] = create_pdf(mod, pset) 
+        if typ == 'jl':
+            param[pslice] = create_pdf(mod, pset) 
+        elif typ == 'scipy':
+            param[pslice] = create_pdf_scipy(mod, pset) 
+        elif typ == 'txt':
+            param[pslice] = create_pdf_txt(mod, pset) 
+        else:
+            raise TypeError("Typ '{}' not supported.".format(typ))
 
     # construct names (replace ' ' with '_')
     names = list()
@@ -51,11 +63,13 @@ def make_prior(ws: str):
 
     prior_specs = dict(zip(names, param)) 
     
-    # create namedtuple to preserve the order (py->jl issue)
-    p = namedtuple('Prior', key_str(prior_specs))(**prior_specs)
-
-    # julia typ for prior as flat vector 
-    return jl.unshaped(jl.NamedTupleDist(p)) 
+    if typ == 'jl':
+        # create namedtuple to preserve the order (py->jl issue)
+        p = namedtuple('Prior', key_str(prior_specs))(**prior_specs)
+        # julia typ for prior as flat vector 
+        return jl.unshaped(jl.NamedTupleDist(p)), prior_specs 
+    else: 
+        return prior_specs
 
 
 def create_pdf(modifier: str, pset):
