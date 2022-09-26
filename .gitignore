@@ -1,4 +1,5 @@
 build/
+notebook/
 *.egg-info/
 __pycache__/
 
