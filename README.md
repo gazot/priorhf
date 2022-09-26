@@ -4,6 +4,18 @@
 
 **Note**: `shapefactor` modifier are not implemented yet.
 
+## Installation
+
+`priorhf` requires 
+- `PythonCall` >=0.9.6 (Julia) 
+- `juliacall` >=0.9.6 (Python)
+
+```
+git clone https://github.com/gazot/priorhf
+cd priorhf
+pip install .
+```
+
 ### Priors as jl.NamedTupleDist for BAT
 
 
